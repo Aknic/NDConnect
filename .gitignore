@@ -1,0 +1,14 @@
+# Build outputs
+bin/
+obj/
+
+# Visual Studio / IDE / User files
+.vs/
+*.user
+*.suo
+*.cache
+*.pdb
+
+# Local / temporary files
+icons.png
+*.log
