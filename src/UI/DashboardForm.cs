@@ -12,11 +12,13 @@ namespace NDConnect.UI
         private readonly Action _onRefresh;
         private readonly Action _onOpenDiag;
         private readonly Action _onOpenColor;
+        private readonly float _dpiScale = 1.0f;
         private List<DeviceBatteryInfo> _devices = new List<DeviceBatteryInfo>();
         private double _breathPhase;
         private int _ringColorMode;
         private CustomColorPalette _customPalette;
 
+        private readonly Panel _header;
         private readonly Label _titleLabel;
         private readonly Button _colorBtn;
         private readonly Button _refreshBtn;
@@ -29,6 +31,12 @@ namespace NDConnect.UI
             _onOpenDiag = onOpenDiag;
             _onOpenColor = onOpenColor;
 
+            AutoScaleMode = AutoScaleMode.None;
+            using (Graphics g = CreateGraphics())
+            {
+                _dpiScale = Math.Max(1.0f, g.DpiX / 96.0f);
+            }
+
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             TopMost = true;
@@ -36,58 +44,100 @@ namespace NDConnect.UI
             BackColor = Color.FromArgb(24, 24, 27);
             ForeColor = Color.FromArgb(244, 244, 245);
             Font = new Font("Microsoft YaHei UI", 9.5f);
-            Width = 370;
-            Height = 280;
+            Padding = new Padding(1);
+            Width = S(470);
+            Height = S(300);
             DoubleBuffered = true;
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
-            Panel header = new Panel();
-            header.Dock = DockStyle.Top;
-            header.Height = 46;
-            header.BackColor = Color.FromArgb(30, 30, 34);
-            header.Padding = new Padding(14, 8, 12, 8);
+            _header = new Panel();
+            _header.Dock = DockStyle.Top;
+            _header.Width = Width - Padding.Horizontal;
+            _header.Height = S(52);
+            _header.BackColor = Color.FromArgb(30, 30, 34);
+            _header.Padding = new Padding(S(14), S(8), S(14), S(8));
 
             _titleLabel = new Label();
             _titleLabel.Text = "NDConnect 设备电量";
             _titleLabel.Font = new Font("Microsoft YaHei UI", 10.5f, FontStyle.Bold);
             _titleLabel.ForeColor = Color.FromArgb(244, 244, 245);
             _titleLabel.AutoSize = true;
-            _titleLabel.Location = new Point(14, 12);
 
-            _colorBtn = CreateHeaderButton("配色", 184);
+            _colorBtn = CreateHeaderButton("配色");
             _colorBtn.Click += delegate
             {
                 Hide();
                 if (_onOpenColor != null) _onOpenColor();
             };
 
-            _refreshBtn = CreateHeaderButton("刷新", 244);
+            _refreshBtn = CreateHeaderButton("刷新");
             _refreshBtn.Click += delegate { if (_onRefresh != null) _onRefresh(); };
 
-            _diagBtn = CreateHeaderButton("诊断", 304);
+            _diagBtn = CreateHeaderButton("诊断");
             _diagBtn.Click += delegate
             {
                 Hide();
                 if (_onOpenDiag != null) _onOpenDiag();
             };
 
-            header.Controls.Add(_titleLabel);
-            header.Controls.Add(_colorBtn);
-            header.Controls.Add(_refreshBtn);
-            header.Controls.Add(_diagBtn);
+            _header.Controls.Add(_titleLabel);
+            _header.Controls.Add(_colorBtn);
+            _header.Controls.Add(_refreshBtn);
+            _header.Controls.Add(_diagBtn);
+            _header.Resize += delegate { LayoutHeaderControls(); };
+            LayoutHeaderControls();
 
             _canvasPanel = new BufferedPanel();
             _canvasPanel.Dock = DockStyle.Fill;
             _canvasPanel.BackColor = Color.FromArgb(24, 24, 27);
+            _canvasPanel.AutoScroll = true;
             _canvasPanel.Paint += OnCanvasPaint;
+            _canvasPanel.Scroll += delegate { _canvasPanel.Invalidate(); };
 
             Controls.Add(_canvasPanel);
-            Controls.Add(header);
+            Controls.Add(_header);
 
             Deactivate += delegate { Hide(); };
         }
 
-        private Button CreateHeaderButton(string text, int x)
+        private int S(int px)
+        {
+            return (int)Math.Round(px * _dpiScale);
+        }
+
+        private void LayoutHeaderControls()
+        {
+            if (_header == null) return;
+            int w = _header.ClientSize.Width;
+            int h = _header.ClientSize.Height;
+            int btnW = S(64);
+            int btnH = S(30);
+            int btnGap = S(8);
+            int rightMargin = S(14);
+            int btnY = Math.Max(4, (h - btnH) / 2);
+
+            if (_diagBtn != null)
+            {
+                _diagBtn.Size = new Size(btnW, btnH);
+                _diagBtn.Location = new Point(w - rightMargin - btnW, btnY);
+            }
+            if (_refreshBtn != null && _diagBtn != null)
+            {
+                _refreshBtn.Size = new Size(btnW, btnH);
+                _refreshBtn.Location = new Point(_diagBtn.Left - btnGap - btnW, btnY);
+            }
+            if (_colorBtn != null && _refreshBtn != null)
+            {
+                _colorBtn.Size = new Size(btnW, btnH);
+                _colorBtn.Location = new Point(_refreshBtn.Left - btnGap - btnW, btnY);
+            }
+            if (_titleLabel != null)
+            {
+                _titleLabel.Location = new Point(S(16), Math.Max(4, (h - _titleLabel.PreferredHeight) / 2));
+            }
+        }
+
+        private Button CreateHeaderButton(string text)
         {
             Button btn = new Button();
             btn.Text = text;
@@ -96,9 +146,9 @@ namespace NDConnect.UI
             btn.FlatAppearance.BorderSize = 1;
             btn.BackColor = Color.FromArgb(39, 39, 42);
             btn.ForeColor = Color.FromArgb(228, 228, 231);
-            btn.Font = new Font("Microsoft YaHei UI", 8.5f);
-            btn.Size = new Size(54, 26);
-            btn.Location = new Point(x, 10);
+            btn.Font = new Font("Microsoft YaHei UI", 8.8f);
+            btn.Size = new Size(S(64), S(30));
+            btn.UseCompatibleTextRendering = false;
             btn.Cursor = Cursors.Hand;
             return btn;
         }
@@ -114,9 +164,21 @@ namespace NDConnect.UI
         {
             _devices = devices ?? new List<DeviceBatteryInfo>();
             _breathPhase = breathPhase;
-            int cardHeight = 76;
-            int count = Math.Max(1, _devices.Count);
-            int targetHeight = Math.Min(560, 46 + count * cardHeight + 18);
+
+            int cardH = S(78);
+            int cardGap = S(10);
+            int topPad = S(12);
+            int bottomPad = S(12);
+            int count = _devices.Count;
+            int contentHeight = count == 0
+                ? S(140)
+                : (topPad + count * cardH + Math.Max(0, count - 1) * cardGap + bottomPad);
+
+            int maxFormHeight = Math.Min(S(640), Screen.PrimaryScreen.WorkingArea.Height - S(40));
+            int targetHeight = Math.Min(maxFormHeight, _header.Height + contentHeight + Padding.Vertical);
+            targetHeight = Math.Max(_header.Height + S(120), targetHeight);
+
+            _canvasPanel.AutoScrollMinSize = new Size(0, contentHeight);
             if (Height != targetHeight)
             {
                 Height = targetHeight;
@@ -134,10 +196,11 @@ namespace NDConnect.UI
         public void PositionNearTaskbar()
         {
             Rectangle wa = Screen.PrimaryScreen.WorkingArea;
-            int x = wa.Right - Width - 12;
-            int y = wa.Bottom - Height - 12;
-            if (x < wa.Left) x = wa.Left + 12;
-            if (y < wa.Top) y = wa.Top + 12;
+            int margin = S(12);
+            int x = wa.Right - Width - margin;
+            int y = wa.Bottom - Height - margin;
+            if (x < wa.Left + margin) x = wa.Left + margin;
+            if (y < wa.Top + margin) y = wa.Top + margin;
             Location = new Point(x, y);
         }
 
@@ -163,18 +226,25 @@ namespace NDConnect.UI
                     sf.Alignment = StringAlignment.Center;
                     sf.LineAlignment = StringAlignment.Center;
                     g.DrawString("暂未检测到支持电量读取的无线设备\n支持 2.4GHz 接收器 / USB 线缆 / Windows 蓝牙",
-                        Font, b, new RectangleF(16, 12, _canvasPanel.Width - 32, _canvasPanel.Height - 24), sf);
+                        Font, b, new RectangleF(S(16), S(12), _canvasPanel.ClientSize.Width - S(32), _canvasPanel.ClientSize.Height - S(24)), sf);
                 }
                 return;
             }
 
-            int y = 10;
-            int cardW = _canvasPanel.Width - 24;
-            int cardH = 66;
+            g.TranslateTransform(0, _canvasPanel.AutoScrollPosition.Y);
+
+            int marginX = S(14);
+            int y = S(12);
+            int cardW = Math.Max(S(240), _canvasPanel.ClientSize.Width - marginX * 2);
+            int cardH = S(78);
+            int cardGap = S(10);
+            int ringSize = S(54);
+            int cardCorner = Math.Max(6, S(10));
+
             foreach (DeviceBatteryInfo dev in _devices)
             {
-                Rectangle cardRect = new Rectangle(12, y, cardW, cardH);
-                using (GraphicsPath path = CreateRoundedRect(cardRect, 10))
+                Rectangle cardRect = new Rectangle(marginX, y, cardW, cardH);
+                using (GraphicsPath path = CreateRoundedRect(cardRect, cardCorner))
                 using (Brush bg = new SolidBrush(Color.FromArgb(39, 39, 42)))
                 using (Pen border = new Pen(Color.FromArgb(56, 56, 62), 1f))
                 {
@@ -182,27 +252,11 @@ namespace NDConnect.UI
                     g.DrawPath(border, path);
                 }
 
-                Rectangle ringBounds = new Rectangle(cardRect.X + 10, cardRect.Y + 9, 48, 48);
+                int ringX = cardRect.X + S(12);
+                int ringY = cardRect.Y + (cardRect.Height - ringSize) / 2;
+                Rectangle ringBounds = new Rectangle(ringX, ringY, ringSize, ringSize);
                 RingIconRenderer.RenderCardRing(g, ringBounds, dev, _breathPhase, _ringColorMode, _customPalette);
 
-                using (Font nameFont = new Font("Microsoft YaHei UI", 9.5f, FontStyle.Bold))
-                using (Font subFont = new Font("Microsoft YaHei UI", 8.2f))
-                using (Brush nameBrush = new SolidBrush(Color.FromArgb(244, 244, 245)))
-                using (Brush subBrush = new SolidBrush(Color.FromArgb(161, 161, 170)))
-                {
-                    RectangleF nameRect = new RectangleF(cardRect.X + 68, cardRect.Y + 11, cardW - 145, 22);
-                    StringFormat sf = new StringFormat();
-                    sf.Trimming = StringTrimming.EllipsisCharacter;
-                    sf.FormatFlags = StringFormatFlags.NoWrap;
-                    g.DrawString(dev.Name, nameFont, nameBrush, nameRect, sf);
-
-                    string sub = string.Format("{0} · {1} ({2})", dev.DisplayCategoryName(), dev.DisplayChannelName(), dev.ProtocolName);
-                    RectangleF subRect = new RectangleF(cardRect.X + 68, cardRect.Y + 35, cardW - 80, 20);
-                    g.DrawString(sub, subFont, subBrush, subRect, sf);
-                    sf.Dispose();
-                }
-
-                // Right-side status badge
                 string statusText = dev.IsAsleep
                     ? (dev.BatteryPercent >= 0 ? dev.BatteryPercent + "% 休眠" : "休眠中")
                     : (dev.IsCharging ? "充电中 ⚡" : (dev.IsFull ? "已充满" : dev.BatteryPercent + "%"));
@@ -211,15 +265,46 @@ namespace NDConnect.UI
                     : (dev.IsCharging
                         ? RingIconRenderer.GetChargingBreathColor(Math.PI, false, _ringColorMode, _customPalette)
                         : RingIconRenderer.GetBatteryColor(dev.BatteryPercent, false, _ringColorMode, _customPalette));
+
+                int badgeW;
                 using (Font pctFont = new Font("Microsoft YaHei UI", 9.0f, FontStyle.Bold))
                 using (Brush pctBrush = new SolidBrush(statusColor))
                 using (StringFormat rightSf = new StringFormat())
                 {
                     rightSf.Alignment = StringAlignment.Far;
-                    g.DrawString(statusText, pctFont, pctBrush, new RectangleF(cardRect.Right - 82, cardRect.Y + 12, 72, 22), rightSf);
+                    rightSf.LineAlignment = StringAlignment.Center;
+                    rightSf.FormatFlags = StringFormatFlags.NoWrap;
+
+                    SizeF statusSize = g.MeasureString(statusText, pctFont, S(300), rightSf);
+                    badgeW = Math.Max(S(96), (int)Math.Ceiling(statusSize.Width) + S(8));
+                    int badgeLeft = cardRect.Right - S(14) - badgeW;
+                    RectangleF badgeRect = new RectangleF(badgeLeft, cardRect.Y + S(13), badgeW, S(26));
+                    g.DrawString(statusText, pctFont, pctBrush, badgeRect, rightSf);
                 }
 
-                y += cardH + 10;
+                int textLeft = ringX + ringSize + S(14);
+                int nameMaxW = Math.Max(S(80), (cardRect.Right - S(14) - badgeW) - textLeft - S(8));
+                int subMaxW = Math.Max(S(80), cardRect.Right - S(14) - textLeft);
+
+                using (Font nameFont = new Font("Microsoft YaHei UI", 9.5f, FontStyle.Bold))
+                using (Font subFont = new Font("Microsoft YaHei UI", 8.2f))
+                using (Brush nameBrush = new SolidBrush(Color.FromArgb(244, 244, 245)))
+                using (Brush subBrush = new SolidBrush(Color.FromArgb(161, 161, 170)))
+                using (StringFormat sf = new StringFormat())
+                {
+                    sf.Trimming = StringTrimming.EllipsisCharacter;
+                    sf.FormatFlags = StringFormatFlags.NoWrap;
+                    sf.LineAlignment = StringAlignment.Center;
+
+                    RectangleF nameRect = new RectangleF(textLeft, cardRect.Y + S(13), nameMaxW, S(26));
+                    g.DrawString(dev.Name, nameFont, nameBrush, nameRect, sf);
+
+                    string sub = string.Format("{0} · {1} ({2})", dev.DisplayCategoryName(), dev.DisplayChannelName(), dev.ProtocolName);
+                    RectangleF subRect = new RectangleF(textLeft, cardRect.Y + S(43), subMaxW, S(24));
+                    g.DrawString(sub, subFont, subBrush, subRect, sf);
+                }
+
+                y += cardH + cardGap;
             }
         }
 

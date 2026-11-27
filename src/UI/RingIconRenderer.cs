@@ -1,7 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Drawing.Text;
+using System.IO;
+using System.Reflection;
 using System.Windows.Forms;
 using NDConnect.Models;
 using NDConnect.Native;
@@ -36,6 +40,9 @@ namespace NDConnect.UI
 
     public static class RingIconRenderer
     {
+        private static readonly object GlyphCacheLock = new object();
+        private static readonly Dictionary<DeviceGlyphType, Bitmap> EmbeddedGlyphCache = new Dictionary<DeviceGlyphType, Bitmap>();
+
         // Smooth battery color stops: 0% Red -> 25% Orange-Red -> 50% Yellow -> 75% Yellow-Green -> 100% Green
         public static Color GetBatteryColor(int percent)
         {
@@ -424,56 +431,65 @@ namespace NDConnect.UI
                 {
                     case DeviceGlyphType.Headset:
                         {
-                            float hr = r * 0.74f;
-                            RectangleF arc = new RectangleF(cx - hr, cy - hr * 0.88f, hr * 2f, hr * 1.76f);
-                            g.DrawArc(pen, arc, 185f, 170f);
-                            float cw = r * 0.30f;
-                            float ch = r * 0.62f;
-                            float cupY = cy + r * 0.04f;
-                            DrawRoundedRect(g, pen, new RectangleF(cx - hr - cw * 0.20f, cupY, cw, ch), cw * 0.45f);
-                            DrawRoundedRect(g, pen, new RectangleF(cx + hr - cw * 0.80f, cupY, cw, ch), cw * 0.45f);
+                            if (!TryDrawEmbeddedGlyph(g, cx, cy, r, glyph, color, 1.58f))
+                            {
+                                float hr = r * 0.74f;
+                                RectangleF arc = new RectangleF(cx - hr, cy - hr * 0.88f, hr * 2f, hr * 1.76f);
+                                g.DrawArc(pen, arc, 185f, 170f);
+                                float cw = r * 0.30f;
+                                float ch = r * 0.62f;
+                                float cupY = cy + r * 0.04f;
+                                DrawRoundedRect(g, pen, new RectangleF(cx - hr - cw * 0.20f, cupY, cw, ch), cw * 0.45f);
+                                DrawRoundedRect(g, pen, new RectangleF(cx + hr - cw * 0.80f, cupY, cw, ch), cw * 0.45f);
+                            }
                             break;
                         }
                     case DeviceGlyphType.Mouse:
                         {
-                            float mw = r * 1.06f;
-                            float mh = r * 1.54f;
-                            RectangleF mr = new RectangleF(cx - mw * 0.5f, cy - mh * 0.5f, mw, mh);
-                            DrawRoundedRect(g, pen, mr, mw * 0.48f);
-                            // Top seam & scroll wheel
-                            g.DrawLine(pen, cx, mr.Top + mh * 0.04f, cx, mr.Top + mh * 0.24f);
-                            float ww = Math.Max(1.6f, mw * 0.18f);
-                            float wh = mh * 0.22f;
-                            DrawRoundedRect(g, brush, new RectangleF(cx - ww * 0.5f, mr.Top + mh * 0.24f, ww, wh), ww * 0.5f);
+                            if (!TryDrawEmbeddedGlyph(g, cx, cy, r, glyph, color, 1.66f))
+                            {
+                                float mw = r * 1.06f;
+                                float mh = r * 1.54f;
+                                RectangleF mr = new RectangleF(cx - mw * 0.5f, cy - mh * 0.5f, mw, mh);
+                                DrawRoundedRect(g, pen, mr, mw * 0.48f);
+                                // Top seam & scroll wheel
+                                g.DrawLine(pen, cx, mr.Top + mh * 0.04f, cx, mr.Top + mh * 0.24f);
+                                float ww = Math.Max(1.6f, mw * 0.18f);
+                                float wh = mh * 0.22f;
+                                DrawRoundedRect(g, brush, new RectangleF(cx - ww * 0.5f, mr.Top + mh * 0.24f, ww, wh), ww * 0.5f);
+                            }
                             break;
                         }
                     case DeviceGlyphType.Keyboard:
                         {
-                            float kw = r * 1.62f;
-                            float kh = r * 1.06f;
-                            RectangleF kr = new RectangleF(cx - kw * 0.5f, cy - kh * 0.5f, kw, kh);
-                            DrawRoundedRect(g, pen, kr, kh * 0.18f);
-                            using (Pen keyPen = new Pen(color, Math.Max(1.1f, lw * 0.85f)))
+                            if (!TryDrawEmbeddedGlyph(g, cx, cy, r, glyph, color, 1.78f))
                             {
-                                keyPen.StartCap = LineCap.Round;
-                                keyPen.EndCap = LineCap.Round;
-                                // Row 1 (4 keys)
-                                float y1 = cy - kh * 0.21f;
-                                for (int i = 0; i < 4; i++)
+                                float kw = r * 1.62f;
+                                float kh = r * 1.06f;
+                                RectangleF kr = new RectangleF(cx - kw * 0.5f, cy - kh * 0.5f, kw, kh);
+                                DrawRoundedRect(g, pen, kr, kh * 0.18f);
+                                using (Pen keyPen = new Pen(color, Math.Max(1.1f, lw * 0.85f)))
                                 {
-                                    float kx = kr.Left + kw * (0.16f + i * 0.20f);
-                                    g.DrawLine(keyPen, kx, y1, kx + kw * 0.08f, y1);
+                                    keyPen.StartCap = LineCap.Round;
+                                    keyPen.EndCap = LineCap.Round;
+                                    // Row 1 (4 keys)
+                                    float y1 = cy - kh * 0.21f;
+                                    for (int i = 0; i < 4; i++)
+                                    {
+                                        float kx = kr.Left + kw * (0.16f + i * 0.20f);
+                                        g.DrawLine(keyPen, kx, y1, kx + kw * 0.08f, y1);
+                                    }
+                                    // Row 2 (3 keys)
+                                    float y2 = cy;
+                                    for (int i = 0; i < 3; i++)
+                                    {
+                                        float kx = kr.Left + kw * (0.20f + i * 0.24f);
+                                        g.DrawLine(keyPen, kx, y2, kx + kw * 0.12f, y2);
+                                    }
+                                    // Spacebar
+                                    float y3 = cy + kh * 0.22f;
+                                    g.DrawLine(keyPen, cx - kw * 0.24f, y3, cx + kw * 0.24f, y3);
                                 }
-                                // Row 2 (3 keys)
-                                float y2 = cy;
-                                for (int i = 0; i < 3; i++)
-                                {
-                                    float kx = kr.Left + kw * (0.20f + i * 0.24f);
-                                    g.DrawLine(keyPen, kx, y2, kx + kw * 0.12f, y2);
-                                }
-                                // Spacebar
-                                float y3 = cy + kh * 0.22f;
-                                g.DrawLine(keyPen, cx - kw * 0.24f, y3, cx + kw * 0.24f, y3);
                             }
                             break;
                         }
@@ -490,83 +506,212 @@ namespace NDConnect.UI
                         }
                     case DeviceGlyphType.GamepadGeneric:
                         {
-                            float gw = r * 1.56f;
-                            float gh = r * 0.96f;
-                            RectangleF gr = new RectangleF(cx - gw * 0.5f, cy - gh * 0.52f, gw, gh);
-                            DrawRoundedRect(g, pen, gr, gh * 0.46f);
-                            // Left D-pad cross
-                            float dcx = cx - gw * 0.25f;
-                            float dcy = cy - gh * 0.04f;
-                            float ds = r * 0.20f;
-                            g.DrawLine(pen, dcx - ds, dcy, dcx + ds, dcy);
-                            g.DrawLine(pen, dcx, dcy - ds, dcx, dcy + ds);
-                            // Right ABXY dots
-                            float rcx = cx + gw * 0.25f;
-                            float dot = Math.Max(1.1f, r * 0.11f);
-                            float off = r * 0.16f;
-                            g.FillEllipse(brush, rcx - dot, dcy - off - dot, dot * 2f, dot * 2f);
-                            g.FillEllipse(brush, rcx - dot, dcy + off - dot, dot * 2f, dot * 2f);
-                            g.FillEllipse(brush, rcx - off - dot, dcy - dot, dot * 2f, dot * 2f);
-                            g.FillEllipse(brush, rcx + off - dot, dcy - dot, dot * 2f, dot * 2f);
+                            if (!TryDrawEmbeddedGlyph(g, cx, cy, r, glyph, color, 1.82f))
+                            {
+                                float gw = r * 1.56f;
+                                float gh = r * 0.96f;
+                                RectangleF gr = new RectangleF(cx - gw * 0.5f, cy - gh * 0.52f, gw, gh);
+                                DrawRoundedRect(g, pen, gr, gh * 0.46f);
+                                // Left D-pad cross
+                                float dcx = cx - gw * 0.25f;
+                                float dcy = cy - gh * 0.04f;
+                                float ds = r * 0.20f;
+                                g.DrawLine(pen, dcx - ds, dcy, dcx + ds, dcy);
+                                g.DrawLine(pen, dcx, dcy - ds, dcx, dcy + ds);
+                                // Right ABXY dots
+                                float rcx = cx + gw * 0.25f;
+                                float dot = Math.Max(1.1f, r * 0.11f);
+                                float off = r * 0.16f;
+                                g.FillEllipse(brush, rcx - dot, dcy - off - dot, dot * 2f, dot * 2f);
+                                g.FillEllipse(brush, rcx - dot, dcy + off - dot, dot * 2f, dot * 2f);
+                                g.FillEllipse(brush, rcx - off - dot, dcy - dot, dot * 2f, dot * 2f);
+                                g.FillEllipse(brush, rcx + off - dot, dcy - dot, dot * 2f, dot * 2f);
+                            }
                             break;
                         }
                     case DeviceGlyphType.GamepadXbox:
                         {
-                            float xr = r * 0.80f;
-                            RectangleF cr = new RectangleF(cx - xr, cy - xr, xr * 2f, xr * 2f);
-                            g.DrawEllipse(pen, cr);
-                            using (Pen xPen = new Pen(color, Math.Max(1.4f, lw * 1.05f)))
+                            if (!TryDrawEmbeddedGlyph(g, cx, cy, r, glyph, color, 1.62f))
                             {
-                                xPen.StartCap = LineCap.Round;
-                                xPen.EndCap = LineCap.Round;
-                                g.DrawArc(xPen, new RectangleF(cx - xr * 0.75f, cy - xr * 0.65f, xr * 1.50f, xr * 1.35f), 215f, 110f);
-                                g.DrawLine(xPen, cx - xr * 0.54f, cy - xr * 0.52f, cx + xr * 0.54f, cy + xr * 0.52f);
-                                g.DrawLine(xPen, cx + xr * 0.54f, cy - xr * 0.52f, cx - xr * 0.54f, cy + xr * 0.52f);
+                                float xr = r * 0.80f;
+                                RectangleF cr = new RectangleF(cx - xr, cy - xr, xr * 2f, xr * 2f);
+                                g.DrawEllipse(pen, cr);
+                                using (Pen xPen = new Pen(color, Math.Max(1.4f, lw * 1.05f)))
+                                {
+                                    xPen.StartCap = LineCap.Round;
+                                    xPen.EndCap = LineCap.Round;
+                                    g.DrawArc(xPen, new RectangleF(cx - xr * 0.75f, cy - xr * 0.65f, xr * 1.50f, xr * 1.35f), 215f, 110f);
+                                    g.DrawLine(xPen, cx - xr * 0.54f, cy - xr * 0.52f, cx + xr * 0.54f, cy + xr * 0.52f);
+                                    g.DrawLine(xPen, cx + xr * 0.54f, cy - xr * 0.52f, cx - xr * 0.54f, cy + xr * 0.52f);
+                                }
                             }
                             break;
                         }
                     case DeviceGlyphType.GamepadPlayStation:
                         {
-                            // Stylized P stem + S floor curve
-                            g.DrawLine(pen, cx - r * 0.14f, cy - r * 0.72f, cx - r * 0.14f, cy + r * 0.62f);
-                            g.DrawArc(pen, new RectangleF(cx - r * 0.14f, cy - r * 0.72f, r * 0.62f, r * 0.68f), 270f, 180f);
-                            g.DrawArc(pen, new RectangleF(cx - r * 0.72f, cy + r * 0.16f, r * 1.44f, r * 0.46f), 15f, 175f);
+                            if (!TryDrawEmbeddedGlyph(g, cx, cy, r, glyph, color, 1.86f))
+                            {
+                                // Stylized P stem + S floor curve
+                                g.DrawLine(pen, cx - r * 0.14f, cy - r * 0.72f, cx - r * 0.14f, cy + r * 0.62f);
+                                g.DrawArc(pen, new RectangleF(cx - r * 0.14f, cy - r * 0.72f, r * 0.62f, r * 0.68f), 270f, 180f);
+                                g.DrawArc(pen, new RectangleF(cx - r * 0.72f, cy + r * 0.16f, r * 1.44f, r * 0.46f), 15f, 175f);
+                            }
                             break;
                         }
                     case DeviceGlyphType.GamepadNintendo:
                         {
-                            // Paired Joy-Cons
-                            float jw = r * 0.56f;
-                            float jh = r * 1.38f;
-                            float gap = r * 0.16f;
-                            RectangleF leftJc = new RectangleF(cx - gap * 0.5f - jw, cy - jh * 0.5f, jw, jh);
-                            RectangleF rightJc = new RectangleF(cx + gap * 0.5f, cy - jh * 0.5f, jw, jh);
-                            DrawRoundedRect(g, pen, leftJc, jw * 0.42f);
-                            DrawRoundedRect(g, pen, rightJc, jw * 0.42f);
-                            float dot = Math.Max(1.3f, r * 0.13f);
-                            g.FillEllipse(brush, leftJc.X + jw * 0.5f - dot, leftJc.Y + jh * 0.30f - dot, dot * 2f, dot * 2f);
-                            g.FillEllipse(brush, rightJc.X + jw * 0.5f - dot, rightJc.Y + jh * 0.64f - dot, dot * 2f, dot * 2f);
+                            if (!TryDrawEmbeddedGlyph(g, cx, cy, r, glyph, color, 1.48f))
+                            {
+                                // Paired Joy-Cons
+                                float jw = r * 0.56f;
+                                float jh = r * 1.38f;
+                                float gap = r * 0.16f;
+                                RectangleF leftJc = new RectangleF(cx - gap * 0.5f - jw, cy - jh * 0.5f, jw, jh);
+                                RectangleF rightJc = new RectangleF(cx + gap * 0.5f, cy - jh * 0.5f, jw, jh);
+                                DrawRoundedRect(g, pen, leftJc, jw * 0.42f);
+                                DrawRoundedRect(g, pen, rightJc, jw * 0.42f);
+                                float dot = Math.Max(1.3f, r * 0.13f);
+                                g.FillEllipse(brush, leftJc.X + jw * 0.5f - dot, leftJc.Y + jh * 0.30f - dot, dot * 2f, dot * 2f);
+                                g.FillEllipse(brush, rightJc.X + jw * 0.5f - dot, rightJc.Y + jh * 0.64f - dot, dot * 2f, dot * 2f);
+                            }
                             break;
                         }
                     default:
                         {
-                            // Bluetooth Rune
-                            float bh = r * 0.78f;
-                            float bw = r * 0.44f;
-                            PointF[] pts = new PointF[]
+                            if (!TryDrawEmbeddedGlyph(g, cx, cy, r, DeviceGlyphType.BluetoothGeneric, color, 1.66f))
                             {
-                                new PointF(cx - bw * 0.65f, cy - bh * 0.36f),
-                                new PointF(cx + bw, cy + bh * 0.36f),
-                                new PointF(cx, cy + bh),
-                                new PointF(cx, cy - bh),
-                                new PointF(cx + bw, cy - bh * 0.36f),
-                                new PointF(cx - bw * 0.65f, cy + bh * 0.36f)
-                            };
-                            g.DrawLines(pen, pts);
+                                // Bluetooth Rune
+                                float bh = r * 0.78f;
+                                float bw = r * 0.44f;
+                                PointF[] pts = new PointF[]
+                                {
+                                    new PointF(cx - bw * 0.65f, cy - bh * 0.36f),
+                                    new PointF(cx + bw, cy + bh * 0.36f),
+                                    new PointF(cx, cy + bh),
+                                    new PointF(cx, cy - bh),
+                                    new PointF(cx + bw, cy - bh * 0.36f),
+                                    new PointF(cx - bw * 0.65f, cy + bh * 0.36f)
+                                };
+                                g.DrawLines(pen, pts);
+                            }
                             break;
                         }
                 }
             }
+        }
+
+        public static bool HasEmbeddedGlyph(DeviceGlyphType glyph)
+        {
+            return GetEmbeddedGlyphBitmap(glyph) != null;
+        }
+
+        private static string GetEmbeddedGlyphResourceName(DeviceGlyphType glyph)
+        {
+            switch (glyph)
+            {
+                case DeviceGlyphType.GamepadXbox:
+                    return "NDConnect.Assets.glyph_xbox.png";
+                case DeviceGlyphType.GamepadPlayStation:
+                    return "NDConnect.Assets.glyph_playstation.png";
+                case DeviceGlyphType.GamepadNintendo:
+                    return "NDConnect.Assets.glyph_nintendo.png";
+                case DeviceGlyphType.BluetoothGeneric:
+                    return "NDConnect.Assets.glyph_bluetooth.png";
+                case DeviceGlyphType.Keyboard:
+                    return "NDConnect.Assets.glyph_keyboard.png";
+                case DeviceGlyphType.Mouse:
+                    return "NDConnect.Assets.glyph_mouse.png";
+                case DeviceGlyphType.Headset:
+                    return "NDConnect.Assets.glyph_headset.png";
+                case DeviceGlyphType.GamepadGeneric:
+                    return "NDConnect.Assets.glyph_gamepad.png";
+                default:
+                    return null;
+            }
+        }
+
+        private static Bitmap GetEmbeddedGlyphBitmap(DeviceGlyphType glyph)
+        {
+            string resName = GetEmbeddedGlyphResourceName(glyph);
+            if (string.IsNullOrEmpty(resName)) return null;
+
+            lock (GlyphCacheLock)
+            {
+                Bitmap cached;
+                if (EmbeddedGlyphCache.TryGetValue(glyph, out cached))
+                {
+                    return cached;
+                }
+
+                Bitmap loaded = null;
+                try
+                {
+                    Assembly asm = Assembly.GetExecutingAssembly();
+                    using (Stream s = asm.GetManifestResourceStream(resName))
+                    {
+                        if (s != null)
+                        {
+                            using (Bitmap tmp = new Bitmap(s))
+                            {
+                                // Copy into a detached 32bppArgb bitmap so the underlying stream can close safely.
+                                Bitmap copy = new Bitmap(tmp.Width, tmp.Height, PixelFormat.Format32bppArgb);
+                                using (Graphics cg = Graphics.FromImage(copy))
+                                {
+                                    cg.DrawImageUnscaled(tmp, 0, 0);
+                                }
+                                loaded = copy;
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    loaded = null;
+                }
+
+                EmbeddedGlyphCache[glyph] = loaded;
+                return loaded;
+            }
+        }
+
+        private static bool TryDrawEmbeddedGlyph(Graphics g, float cx, float cy, float r, DeviceGlyphType glyph, Color color, float diameterScale)
+        {
+            Bitmap bmp = GetEmbeddedGlyphBitmap(glyph);
+            if (bmp == null) return false;
+
+            float size = Math.Max(4f, r * diameterScale);
+            float x = cx - size * 0.5f;
+            float y = cy - size * 0.5f;
+
+            float rf = color.R / 255f;
+            float gf = color.G / 255f;
+            float bf = color.B / 255f;
+            float af = color.A / 255f;
+            ColorMatrix cm = new ColorMatrix(new float[][]
+            {
+                new float[] { rf, 0f, 0f, 0f, 0f },
+                new float[] { 0f, gf, 0f, 0f, 0f },
+                new float[] { 0f, 0f, bf, 0f, 0f },
+                new float[] { 0f, 0f, 0f, af, 0f },
+                new float[] { 0f, 0f, 0f, 0f, 1f }
+            });
+
+            using (ImageAttributes ia = new ImageAttributes())
+            {
+                ia.SetColorMatrix(cm, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+                ia.SetWrapMode(WrapMode.TileFlipXY);
+                PointF[] destPts = new PointF[]
+                {
+                    new PointF(x, y),
+                    new PointF(x + size, y),
+                    new PointF(x, y + size)
+                };
+                lock (GlyphCacheLock)
+                {
+                    g.DrawImage(bmp, destPts, new RectangleF(0f, 0f, bmp.Width, bmp.Height), GraphicsUnit.Pixel, ia);
+                }
+            }
+            return true;
         }
 
         private static void DrawRoundedRect(Graphics g, Pen pen, RectangleF rect, float radius)

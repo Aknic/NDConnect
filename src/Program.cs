@@ -327,14 +327,35 @@ namespace NDConnect
                 Console.WriteLine("FAIL: Tooltip > 63 chars"); failures++;
             }
 
-            // 6. 500-iteration GDI icon render/destroy leak test
+            // 6. 500-iteration GDI icon render/destroy leak test + embedded glyph resource checks
+            DeviceGlyphType[] requiredEmbedded = new DeviceGlyphType[]
+            {
+                DeviceGlyphType.GamepadXbox,
+                DeviceGlyphType.GamepadPlayStation,
+                DeviceGlyphType.GamepadNintendo,
+                DeviceGlyphType.BluetoothGeneric,
+                DeviceGlyphType.Keyboard,
+                DeviceGlyphType.Mouse,
+                DeviceGlyphType.Headset,
+                DeviceGlyphType.GamepadGeneric
+            };
+            foreach (DeviceGlyphType reqGlyph in requiredEmbedded)
+            {
+                if (!RingIconRenderer.HasEmbeddedGlyph(reqGlyph))
+                {
+                    Console.WriteLine("FAIL: Missing embedded glyph PNG resource for " + reqGlyph); failures++;
+                }
+            }
+
+            DeviceGlyphType[] leakGlyphs = requiredEmbedded;
             IntPtr proc = User32Native.GetCurrentProcess();
             uint gdiBefore = User32Native.GetGuiResources(proc, 0);
             DeviceBatteryInfo sample = new DeviceBatteryInfo();
             sample.Name = "Test Mouse"; sample.Category = DeviceCategory.Mouse; sample.BatteryPercent = 64; sample.IsCharging = true;
             for (int i = 0; i < 500; i++)
             {
-                using (RenderedIcon icon = RingIconRenderer.RenderTrayIcon(sample, i * 0.2, (i % 2 == 0), 32))
+                sample.GlyphType = leakGlyphs[i % leakGlyphs.Length];
+                using (RenderedIcon icon = RingIconRenderer.RenderTrayIcon(sample, i * 0.2, (i % 5 == 0), 32))
                 {
                     if (icon.HIcon == IntPtr.Zero) { Console.WriteLine("FAIL: Null HIcon"); failures++; break; }
                 }

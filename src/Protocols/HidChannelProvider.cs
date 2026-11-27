@@ -121,7 +121,8 @@ namespace NDConnect.Protocols
             string up = (dev.Name ?? string.Empty).ToUpperInvariant();
             if (dev.Category == DeviceCategory.Gamepad || up.Contains("CONTROLLER") || up.Contains("GAMEPAD"))
             {
-                if (up.Contains("DUALSENSE") || up.Contains("DUALSHOCK") || up.Contains("PLAYSTATION") || up.Contains("SONY"))
+                if (up.Contains("DUALSENSE") || up.Contains("DUALSHOCK") || up.Contains("PLAYSTATION") ||
+                    up.Contains("SONY") || up.Contains("PS5") || up.Contains("PS4"))
                     dev.GlyphType = DeviceGlyphType.GamepadPlayStation;
                 else if (up.Contains("XBOX"))
                     dev.GlyphType = DeviceGlyphType.GamepadXbox;

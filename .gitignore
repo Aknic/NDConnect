@@ -11,4 +11,5 @@ obj/
 
 # Local / temporary files
 icons.png
+*-svgrepo-com.png
 *.log

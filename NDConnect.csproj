@@ -34,5 +34,31 @@
   <ItemGroup>
     <Compile Include="src\**\*.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="assets\glyph_xbox.png">
+      <LogicalName>NDConnect.Assets.glyph_xbox.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="assets\glyph_playstation.png">
+      <LogicalName>NDConnect.Assets.glyph_playstation.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="assets\glyph_nintendo.png">
+      <LogicalName>NDConnect.Assets.glyph_nintendo.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="assets\glyph_bluetooth.png">
+      <LogicalName>NDConnect.Assets.glyph_bluetooth.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="assets\glyph_keyboard.png">
+      <LogicalName>NDConnect.Assets.glyph_keyboard.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="assets\glyph_mouse.png">
+      <LogicalName>NDConnect.Assets.glyph_mouse.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="assets\glyph_headset.png">
+      <LogicalName>NDConnect.Assets.glyph_headset.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="assets\glyph_gamepad.png">
+      <LogicalName>NDConnect.Assets.glyph_gamepad.png</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
